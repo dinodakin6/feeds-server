@@ -16,6 +16,15 @@ const fs = require('fs');
 const BingService = require('./bing.service');
 const { uploadBingFeedToS3 } = require('./feed-upload.service');
 const FEED = require('../connexity/constants');
+const event = require('events');
+
+const emitter = new event.EventEmitter();
+
+emitter.on('sendWebhook', async e => {
+  const { merchantName, merchantId } = e;
+
+  await sendUploadHook(merchantName, merchantId);
+});
 
 const getSpecificMerchantFeed = async mid => {
   flog('Start of getAllFeeds');
@@ -105,7 +114,10 @@ const regenerateFeed = async (merchantName, merchantId) => {
     const end = new Date().toISOString();
     const endLocale = new Date(end).toLocaleString();
 
-    await sendUploadHook(merchantName, merchantId);
+    emitter.emit('sendWebhook', {
+      merchantName,
+      merchantId,
+    });
 
     flog(`Start: --- ${start} --- ${startLocale}`);
     flog(`End: --- ${end} --- ${endLocale}`);
@@ -122,7 +134,7 @@ const sendUploadHook = async (merchantName, merchantId) => {
       merchantId: merchantId,
     };
     const res = await axios.post(`http://localhost:5000/api/singleFeeds/f`, data);
-    flog(`--Finished sending hook to VLM: ${res}`);
+    flog(`--Finished sending hook to VLM: ${res.message}`);
   } catch (error) {
     console.log(error);
     flog('--Fail sending upload hook to VLM--');
