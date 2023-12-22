@@ -13,7 +13,7 @@ const {
 const axios = require('axios');
 const fs = require('fs');
 
-const BingService = require('./bing.service');
+const BingService = require('../bing/service');
 const { uploadBingFeedToS3 } = require('./feed-upload.service');
 const FEED = require('../connexity/constants');
 const event = require('events');

@@ -86,9 +86,14 @@ const getMerchants = () => {
   const path = `${FEED.META.ROOT_PATH}/${FEED.MERCHANT.NAME}`;
 
   const merchantsJson = JSON.parse(fs.readFileSync(path, 'utf-8'));
+
   const merchantsMap = merchantsJson.merchant.reduce((acc, item) => {
-    acc[item.mid] = item.merchantInfo;
-    acc[item.mid].id = item.mid;
+    const newMerchantInfo = {
+      ...item.merchantInfo,
+      id: item.mid,
+    };
+
+    acc[item.mid] = newMerchantInfo;
     return acc;
   }, {});
 
@@ -128,7 +133,7 @@ const getMultiplier = () => {
  */
 const downloadOfferFiles = async ({ links, purgeDirectory, type }) => {
   if (purgeDirectory) {
-    fs.rmdirSync(FEED.META.FEED_PATH);
+    fs.rmSync(FEED.META.FEED_PATH, { recursive: true, force: true });
     fs.mkdirSync(FEED.META.FEED_PATH);
   }
 

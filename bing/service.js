@@ -19,7 +19,7 @@ const placementIdsMap = {
   28614: ['939510000', '939410000'],
   265795: ['919520000', '919420000'],
   32251: ['903510000', '903410000', '903530000', '903430000'],
-  199042: ['929510000', '929410000', '929530000', '929430000'],
+  199042: ['929510020', '929410000', '929530012', '929430000'],
   315724: ['902510000', '902410000', '902530000', '902430000'],
   281380: ['944510000', '944410000', '944530000', '944430000'],
   301179: ['936510000', '936410000'],
@@ -46,13 +46,13 @@ const placementIdsMap = {
   299459: ['938510000', '938410000', '938530000', '938430000'],
   315385: ['943510000', '943410000', '943530000', '943430000'],
   315684: ['930510000', '930410000', '930530000', '930430000'],
-  30783: ['933510000', '933410000', '933530000', '933430000'],
+  30783: ['933510000', '933410000'],
   27754: ['925510000', '925410000', '925530000', '925430000'],
-  67528: ['955510015', '955410051'],
+  67528: ['955510051', '955410015'],
   320952: ['909520102', '909420102'],
   317217: ['945510000', '945410000', '945530000', '945430000'],
   309659: ['999510051', '999410000', '988530051', '988430051'],
-  17330: ['907510000', '907410000', '907530000', '907430000'],
+  17330: ['907510000', '907410000'],
   37130: ['946510000', '946410000', '946530000', '946430000'],
   30782: ['922511100', '922410000'],
   197931: ['966510000', '966410000', '966530000', '966430000'],
@@ -62,8 +62,12 @@ const placementIdsMap = {
 const replacements = {
   30782: [
     {
-      check: '922511100',
+      check: '955510051',
       replaceWith: '922510000',
+    },
+    {
+      check: '955410015',
+      replaceWith: '955410051',
     },
   ],
   190411: [
@@ -331,18 +335,27 @@ const createFeedFile = ({
     writeStream.write(headerString);
     const additionalFeedData = feedFile;
 
+    const merchantId = merchantInfo.id;
+
+    const placementIds = placementIdsMap[merchantId] ?? [];
+    const placementIdRows = multiplierContents.filter(item =>
+      placementIds.includes(item.placementId)
+    );
+    const averageMultiplier =
+      placementIdRows.reduce((acc, item) => acc + Number(item.ecpcMultiplier), 0) /
+      placementIdRows.length;
+
     readJsonStream.on('data', data => {
       const additionalOfferData = additionalFeedData[data.id];
+
       if (!additionalOfferData) {
         rejectedProducts.push(data.id);
         return;
       }
 
-      const merchantId = merchantInfo.id;
-
-      const placementIds = placementIdsMap[additionalOfferData.merchantId];
       const originalEstimatedCpc = additionalOfferData.estimatedCPC;
-      if (!placementIds) {
+
+      if (!placementIds || placementIds.length === 0) {
         const placementId = '';
         const offerAttr = extractBingAttributes(
           merchantInfo,
@@ -352,65 +365,84 @@ const createFeedFile = ({
         );
         const offerAttrString = offerAttributesToString(offerAttr);
         writeStream.write(offerAttrString);
-      } else {
-        const originalId = data.id;
-        placementIds.map((id, index) => {
-          if (index) {
-            data.id = originalId + index;
-          }
-          const placementId = id;
-          const multiplierAndId = multiplierContents.find(
-            item =>
-              item.ecpcMultiplierKey == additionalOfferData.ecpcMultiplierKey &&
-              id == item.placementId
+        return;
+      }
+
+      const originalId = data.id;
+
+      for (const index in placementIds) {
+        const placementId = placementIds[index];
+        const newId = originalId + index;
+
+        data.id = newId;
+
+        const matchPlacement = multiplierContents.filter(item => placementId === item.placementId);
+
+        const matchPlacementAndKey = matchPlacement.find(
+          item => item.ecpcMultiplierKey === additionalFeedData.ecpcMultiplierKey
+        );
+
+        if (matchPlacementAndKey) {
+          const adjustedCpc = originalEstimatedCpc * matchPlacementAndKey.ecpcMultiplier;
+          additionalOfferData.estimatedCPC = adjustedCpc;
+
+          const offerAttr = extractBingAttributes(
+            merchantInfo,
+            data,
+            additionalOfferData,
+            placementId
           );
+          const offerAttrString = offerAttributesToString(offerAttr);
+          writeStream.write(offerAttrString);
+          continue;
+        }
 
-          if (!multiplierAndId) {
-            const multiplier = multiplierContents.find(
-              item => item.ecpcMultiplierKey == additionalOfferData.ecpcMultiplierKey
-            );
+        // has a match placement but no matching key
+        if (matchPlacement.length) {
+          const [firstRow] = matchPlacement;
 
-            if (!multiplier) {
-              const matchDefaultMultiplier = defaultMultipliers[merchantId] ?? 0.5;
+          const adjustedCpc = originalEstimatedCpc * firstRow.ecpcMultiplier;
+          additionalOfferData.estimatedCPC = adjustedCpc;
 
-              const res = originalEstimatedCpc * matchDefaultMultiplier;
+          const offerAttr = extractBingAttributes(
+            merchantInfo,
+            data,
+            additionalOfferData,
+            placementId
+          );
+          const offerAttrString = offerAttributesToString(offerAttr);
+          writeStream.write(offerAttrString);
+          continue;
+        }
 
-              additionalOfferData.estimatedCPC = res;
-              const offerAttr = extractBingAttributes(
-                merchantInfo,
-                data,
-                additionalOfferData,
-                placementId
-              );
-              const offerAttrString = offerAttributesToString(offerAttr);
-              writeStream.write(offerAttrString);
-            } else {
-              const res = originalEstimatedCpc * multiplier.ecpcMultiplier;
-              additionalOfferData.estimatedCPC = res;
+        // has no matching placement but other placement ids exist
+        if (placementIdRows.length) {
+          const adjustedCpc = originalEstimatedCpc * averageMultiplier;
+          additionalOfferData.estimatedCPC = adjustedCpc;
 
-              const offerAttr = extractBingAttributes(
-                merchantInfo,
-                data,
-                additionalOfferData,
-                placementId
-              );
-              const offerAttrString = offerAttributesToString(offerAttr);
-              writeStream.write(offerAttrString);
-            }
-          } else {
-            const res = originalEstimatedCpc * multiplierAndId.ecpcMultiplier;
-            additionalOfferData.estimatedCPC = res;
+          const offerAttr = extractBingAttributes(
+            merchantInfo,
+            data,
+            additionalOfferData,
+            placementId
+          );
+          const offerAttrString = offerAttributesToString(offerAttr);
+          writeStream.write(offerAttrString);
+          continue;
+        }
 
-            const offerAttr = extractBingAttributes(
-              merchantInfo,
-              data,
-              additionalOfferData,
-              placementId
-            );
-            const offerAttrString = offerAttributesToString(offerAttr);
-            writeStream.write(offerAttrString);
-          }
-        });
+        // if no placement id at all
+        const adjustedCpc = originalEstimatedCpc * 0.5;
+        additionalOfferData.estimatedCPC = adjustedCpc;
+
+        const offerAttr = extractBingAttributes(
+          merchantInfo,
+          data,
+          additionalOfferData,
+          placementId
+        );
+        const offerAttrString = offerAttributesToString(offerAttr);
+        writeStream.write(offerAttrString);
       }
     });
 
