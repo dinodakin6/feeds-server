@@ -26,6 +26,27 @@ emitter.on('sendWebhook', async e => {
   await sendUploadHook(merchantName, merchantId);
 });
 
+const regenerationQueue = [];
+let isRegenerating = false;
+
+const processQueue = async () => {
+  if (isRegenerating || regenerationQueue.length === 0) {
+    return;
+  }
+
+  const nextRequest = regenerationQueue.shift();
+
+  if (nextRequest) {
+    const { merchantName, merchantId } = nextRequest;
+    await regenerateFeed(merchantName, merchantId);
+  }
+};
+
+const enqueueRequest = (merchantName, merchantId) => {
+  regenerationQueue.push({ merchantName, merchantId });
+  processQueue();
+};
+
 const getSpecificMerchantFeed = async mid => {
   flog('Start of getAllFeeds');
   prepareFeedDirectories({ purgeDirectory: true });
@@ -105,6 +126,7 @@ const regenerateFeed = async (merchantName, merchantId) => {
   const startLocale = new Date(start).toLocaleString();
 
   try {
+    isRegenerating = true;
     const toFetch = process.argv[2] !== '--no-refetch';
     flog(`-- to fetch: ${toFetch}`);
 
@@ -123,6 +145,9 @@ const regenerateFeed = async (merchantName, merchantId) => {
     flog(`End: --- ${end} --- ${endLocale}`);
   } catch (error) {
     flog(error);
+  } finally {
+    isRegenerating = false;
+    processQueue();
   }
 };
 
@@ -142,5 +167,5 @@ const sendUploadHook = async (merchantName, merchantId) => {
 };
 
 module.exports = {
-  regenerateFeed,
+  enqueueRequest,
 };

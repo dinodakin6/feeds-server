@@ -1,4 +1,5 @@
 const { promisify } = require('util');
+const { flog } = require('../lib');
 const axios = require('axios');
 const zlib = require('zlib');
 const fs = require('fs');
@@ -42,11 +43,17 @@ const readPromise = ({ readPath, onData, onEnd }) => {
  *
  */
 const prepareFeedDirectories = ({ purgeDirectory }) => {
-  if (purgeDirectory) {
-    fs.rmSync(FEED.META.ROOT_PATH, { recursive: true, force: true });
-  }
+  try {
+    if (purgeDirectory) {
+      fs.rmSync(FEED.META.ROOT_PATH, { recursive: true, force: true });
+      flog('Purge directory done');
+    }
 
-  fs.mkdirSync(FEED.META.FEED_PATH, { recursive: true });
+    fs.mkdirSync(FEED.META.FEED_PATH, { recursive: true });
+    flog('Create directory done');
+  } catch (error) {
+    flog('prepareFeedDirectories error: ' + error);
+  }
 };
 
 /**
@@ -59,8 +66,7 @@ const downloadIndexFiles = async () => {
 
   for (const item of toDownload) {
     const url = `${item.URL}/${params}`;
-    const response = await axios.get(url, { responseType: 'arraybuffer' });
-    await unzipAndSaveFile(response.data, item.NAME);
+    await downloadAndUnzip({ fileUrl: url, fileName: item.NAME });
   }
 };
 
@@ -74,8 +80,7 @@ const downloadMerchantFile = async () => {
   const fileName = FEED.MERCHANT.NAME;
 
   const url = `${merchantUrl}/${params}`;
-  const response = await axios.get(url, { responseType: 'arraybuffer' });
-  await unzipAndSaveFile(response.data, fileName);
+  await downloadAndUnzip({ fileUrl: url, fileName });
 };
 
 /**
@@ -110,8 +115,7 @@ const downloadEcpcMultiplier = async () => {
   const params = FEED.META.PARAMS;
 
   const url = `${multiplierUrl}${params}`;
-  const response = await axios.get(url, { responseType: 'arraybuffer' });
-  await unzipAndSaveFile(response.data, fileName);
+  await downloadAndUnzip({ fileUrl: url, fileName });
 };
 
 /**
@@ -121,6 +125,24 @@ const downloadEcpcMultiplier = async () => {
 const getMultiplier = () => {
   const multiplierData = readCsvToObjectArray(`${FEED.META.ROOT_PATH}/${FEED.MULTIPLIER.NAME}`);
   return multiplierData;
+};
+
+const downloadAndUnzip = async ({ fileUrl, fileName, retries = 3 }) => {
+  try {
+    const response = await axios.get(fileUrl, {
+      responseType: 'arraybuffer',
+    });
+    console.log('-- done downloading ', fileName);
+
+    await unzipAndSaveFile(response.data, fileName);
+  } catch (error) {
+    console.log(`-- error in ${fileName}. retry left: ${retries}`);
+    if (retries > 0) {
+      return await downloadAndUnzip({ fileName, fileUrl, retries: retries - 1 });
+    }
+
+    throw new Error(`-- retries exhausted. unable to download ${fileName}`);
+  }
 };
 
 /**
@@ -142,16 +164,10 @@ const downloadOfferFiles = async ({ links, purgeDirectory, type }) => {
 
   for (const link of links) {
     const withParams = `${link.url}/${params}`;
-    const fileName = `${link.name}.${fileType}`;
+    const fileName = `feeds/${link.name}.${fileType}`;
 
-    const response = await axios.get(withParams, {
-      responseType: 'arraybuffer',
-      headers: {
-        'Accept-Encoding': 'gzip, deflate',
-      },
-    });
     console.log('-- done downloading ', link.name);
-    await unzipAndSaveFile(response.data, `feeds/${fileName}`);
+    await downloadAndUnzip({ fileUrl: withParams, fileName });
   }
 };
 

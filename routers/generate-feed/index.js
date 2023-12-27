@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { regenerateFeed } = require('../../services/generate-feed.service');
+const { enqueueRequest } = require('../../services/generate-feed.service');
 
-router.post('/', (req, res, next) => {
+router.post('/', async (req, res, next) => {
   try {
     const { merchantId, merchantName } = req.body;
 
@@ -11,7 +11,7 @@ router.post('/', (req, res, next) => {
         message: 'Merchant ID and Merchant Name not found',
       });
 
-    regenerateFeed(merchantName, merchantId);
+    enqueueRequest(merchantName, merchantId);
 
     return res.sendStatus(200);
   } catch (error) {

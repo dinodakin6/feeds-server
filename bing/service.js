@@ -458,6 +458,7 @@ const createFeedFile = ({
           }
         );
       }
+      writeStream.end();
       resolve(1);
     });
 
