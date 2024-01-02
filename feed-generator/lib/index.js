@@ -77,10 +77,12 @@ const rpcRange = val => {
 };
 
 const flog = data => {
-  const logPath = path.resolve(__dirname, '../logs/logs.txt');
-  const timeNow = new Date().toISOString();
+  const today = new Date().toISOString();
+  const date = today.split('T')[0];
 
-  const toWrite = `[${timeNow}] ${data}\n`;
+  const logPath = path.resolve(__dirname, `../../logs/${date}.txt`);
+
+  const toWrite = `[${today}] ${data}\n`;
   console.log(toWrite);
 
   fs.writeFileSync(logPath, toWrite, { flag: 'a' });

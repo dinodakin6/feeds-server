@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { enqueueRequest } = require('../../services/generate-feed.service');
+const { enqueueRequest } = require('../../feed-generator/services/generate-feed.service');
 
 router.post('/', async (req, res, next) => {
   try {

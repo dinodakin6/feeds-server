@@ -10,6 +10,9 @@ const {
   getOfferLinkFromIndex,
   prepareFeedDirectories,
 } = require('../connexity/service');
+
+const { insertRegenerateData, updateRegenerateData } = require('./update-db.service');
+
 const axios = require('axios');
 const fs = require('fs');
 
@@ -23,6 +26,7 @@ const emitter = new event.EventEmitter();
 emitter.on('sendWebhook', async e => {
   const { merchantName, merchantId } = e;
 
+  await updateRegenerateData(merchantId, 'done');
   await sendUploadHook(merchantName, merchantId);
 });
 
@@ -48,7 +52,7 @@ const enqueueRequest = (merchantName, merchantId) => {
 };
 
 const getSpecificMerchantFeed = async mid => {
-  flog('Start of getAllFeeds');
+  flog(`Start of getSpecificMerchantFeed: ${mid}`);
   prepareFeedDirectories({ purgeDirectory: true });
 
   flog('-- downloading all index');
@@ -102,13 +106,14 @@ const getSpecificMerchantFeed = async mid => {
 
   saveTextToFile({
     data: rejectedMerchants.join('\n'),
-    filePath: 'logs/rejected_merchants.txt',
+    filePath: '../logs/rejected_merchants.txt',
   });
   flog('-- done getAllFeeds');
 };
 
-const uploadFeed = async merchantName => {
+const uploadFeed = async (merchantName, merchantId) => {
   flog('Start of uploadFeed');
+  await updateRegenerateData(merchantId, 'uploading');
 
   const files = fs.readdirSync(FEED.META.FEED_PATH);
   const textFile = files.filter(item => item.includes(merchantName));
@@ -129,9 +134,11 @@ const regenerateFeed = async (merchantName, merchantId) => {
     isRegenerating = true;
     const toFetch = process.argv[2] !== '--no-refetch';
     flog(`-- to fetch: ${toFetch}`);
+    await insertRegenerateData(merchantId, merchantName);
 
     if (toFetch) await getSpecificMerchantFeed(merchantId);
-    await uploadFeed(merchantName);
+    await updateRegenerateData(merchantId, 'regenerating');
+    await uploadFeed(merchantName, merchantId);
 
     const end = new Date().toISOString();
     const endLocale = new Date(end).toLocaleString();
@@ -158,7 +165,7 @@ const sendUploadHook = async (merchantName, merchantId) => {
       merchantName: merchantName,
       merchantId: merchantId,
     };
-    const res = await axios.post(`http://localhost:5000/api/singleFeeds/f`, data);
+    const res = await axios.post(`http://localhost:5000/api/feeds/f`, data);
     flog(`--Finished sending hook to VLM: ${res.message}`);
   } catch (error) {
     console.log(error);

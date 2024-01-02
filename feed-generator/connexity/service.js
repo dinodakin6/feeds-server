@@ -1,10 +1,9 @@
 const { promisify } = require('util');
-const { flog } = require('../lib');
 const axios = require('axios');
 const zlib = require('zlib');
 const fs = require('fs');
 
-const { readCsvToObjectArray } = require('../lib');
+const { flog, readCsvToObjectArray } = require('../lib');
 const FEED = require('./constants');
 
 const unzipAndSaveFile = async (fileStream, fileName) => {
@@ -131,12 +130,15 @@ const downloadAndUnzip = async ({ fileUrl, fileName, retries = 3 }) => {
   try {
     const response = await axios.get(fileUrl, {
       responseType: 'arraybuffer',
+      headers: {
+        'Accept-Encoding': 'gzip, deflate',
+      },
     });
-    console.log('-- done downloading ', fileName);
+    flog(`-- done downloading ${fileName}`);
 
     await unzipAndSaveFile(response.data, fileName);
   } catch (error) {
-    console.log(`-- error in ${fileName}. retry left: ${retries}`);
+    flog(`-- error in ${fileName}. retry left: ${retries}`);
     if (retries > 0) {
       return await downloadAndUnzip({ fileName, fileUrl, retries: retries - 1 });
     }
