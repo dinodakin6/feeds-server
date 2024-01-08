@@ -5,6 +5,82 @@ const { integralToUSDString, removeQuotes, rpcRange } = require('../lib');
 const csv = require('csv-parser');
 const FEED = require('../connexity/constants');
 
+const labelMap = {
+  Female_Desktop: [
+    '947510000',
+    '948510000',
+    '949510000',
+    '950510000',
+    '951510000',
+    '952510000',
+    '953510000',
+    '954510000',
+    '956510000',
+    '957510000',
+    '958510000',
+    '959510000',
+    '960510000',
+    '962510000',
+    '963510000',
+    '964510000',
+    '965510000',
+    '967510000',
+    '968510000',
+    '969510000',
+  ],
+
+  Female_Mobile: [
+    '947410000',
+    '948410000',
+    '949410000',
+    '950410000',
+    '951410000',
+    '952410000',
+    '953410000',
+    '954410000',
+    '956410000',
+    '957410000',
+    '958410000',
+    '959410000',
+    '960410000',
+    '962410000',
+    '963410000',
+    '964410000',
+    '965410000',
+    '967410000',
+    '968410000',
+    '969410000',
+  ],
+  Male_Desktop: [
+    '947530000',
+    '948530000',
+    '949530000',
+    '952530000',
+    '953530000',
+    '954530000',
+    '956530000',
+    '957530000',
+    '958530000',
+    '967530000',
+    '968530000',
+  ],
+  Male_Mobile: [
+    '947430000',
+    '948430000',
+    '949430000',
+    '952430000',
+    '953430000',
+    '954430000',
+    '956430000',
+    '957430000',
+    '958430000',
+    '967430000',
+    '968430000',
+  ],
+  Mix_Desktop: ['961520000'],
+  Mix_Mobile: ['961420000'],
+};
+
 const placementIdsMap = {
   24: ['913510000', '913410000', '913530000', '913430000'],
   253317: ['941510000', '941410000', '941530000', '941430000'],
@@ -57,6 +133,27 @@ const placementIdsMap = {
   30782: ['922511100', '922410000'],
   197931: ['966510000', '966410000', '966530000', '966430000'],
   257468: ['905530405', '905430102'],
+  662: ['968510000', '968410000', '968530000', '968430000'],
+  324280: ['969510000', '969410000'],
+  303590: ['947510000', '947410000', '947530000', '947430000'],
+  19881: ['948510000', '948410000', '948530000', '948430000'],
+  317089: ['949510000', '949410000', '949530000', '949430000'],
+  275408: ['950510000', '950410000'],
+  102927: ['951510000', '951410000'],
+  220816: ['952510000', '952410000', '952530000', '952430000'],
+  326387: ['953510000', '953410000', '953530000', '953430000'],
+  299275: ['954510000', '954410000', '954530000', '954430000'],
+  200942: ['956510000', '956410000', '956530000', '956430000'],
+  263406: ['957510000', '957410000', '957530000', '957430000'],
+  172722: ['958510000', '958410000', '958530000', '958430000'],
+  29666: ['959510000', '959410000'],
+  317263: ['960510000', '960410000'],
+  202334: ['961520000', '961420000'],
+  170918: ['962510000', '962410000'],
+  216562: ['963510000', '963410000'],
+  277057: ['964510000', '964410000'],
+  317481: ['965510000', '965410000'],
+  207794: ['967510000', '967410000', '967530000', '967430000'],
 };
 
 const replacements = {
@@ -207,7 +304,15 @@ const extractBingAttributes = (merchantInfo, offerJson, additionalFeedData, plac
       const merchantId = merchantInfo.id;
       const hasReplacement = merchantId in replacements;
 
-      if (!hasReplacement) return placementId;
+      if (!hasReplacement) {
+        let res = '';
+        Object.keys(labelMap).forEach(key => {
+          if (labelMap[key].includes(placementId)) {
+            res = key;
+          }
+        });
+        return res ? res : placementId;
+      }
 
       for (const item of replacements[merchantId]) {
         if (item.check === placementId) return item.replaceWith;
@@ -279,15 +384,7 @@ const getAdditionalFeedData = merchantId => {
         .pipe(JSONStream.parse('offers.offer..'));
 
       readStream.on('data', data => {
-        const {
-          id,
-          merchantProductId,
-          estimatedCPC,
-          url,
-          shipType,
-          shipAmount,
-          ecpcMultiplierKey,
-        } = data;
+        const { id, merchantProductId, estimatedCPC, url, shipType, shipAmount, ecpcMultiplierKey } = data;
 
         let shipping = '';
 
@@ -323,13 +420,7 @@ const getAdditionalFeedData = merchantId => {
   });
 };
 
-const createFeedFile = ({
-  merchantInfo,
-  sourcePath,
-  destination,
-  feedFile,
-  multiplierContents,
-}) => {
+const createFeedFile = ({ merchantInfo, sourcePath, destination, feedFile, multiplierContents }) => {
   return new Promise((resolve, reject) => {
     const csvParser = csv({ separator: '\t' });
     const readJsonStream = fs.createReadStream(sourcePath).pipe(csvParser);
@@ -344,12 +435,9 @@ const createFeedFile = ({
     const merchantId = merchantInfo.id;
 
     const placementIds = placementIdsMap[merchantId] ?? [];
-    const placementIdRows = multiplierContents.filter(item =>
-      placementIds.includes(item.placementId)
-    );
+    const placementIdRows = multiplierContents.filter(item => placementIds.includes(item.placementId));
     const averageMultiplier =
-      placementIdRows.reduce((acc, item) => acc + Number(item.ecpcMultiplier), 0) /
-      placementIdRows.length;
+      placementIdRows.reduce((acc, item) => acc + Number(item.ecpcMultiplier), 0) / placementIdRows.length;
 
     readJsonStream.on('data', data => {
       const additionalOfferData = additionalFeedData[data.id];
@@ -363,12 +451,7 @@ const createFeedFile = ({
 
       if (!placementIds || placementIds.length === 0) {
         const placementId = '';
-        const offerAttr = extractBingAttributes(
-          merchantInfo,
-          data,
-          additionalOfferData,
-          placementId
-        );
+        const offerAttr = extractBingAttributes(merchantInfo, data, additionalOfferData, placementId);
         const offerAttrString = offerAttributesToString(offerAttr);
         writeStream.write(offerAttrString);
         return;
@@ -392,12 +475,7 @@ const createFeedFile = ({
           const adjustedCpc = originalEstimatedCpc * matchPlacementAndKey.ecpcMultiplier;
           additionalOfferData.estimatedCPC = adjustedCpc;
 
-          const offerAttr = extractBingAttributes(
-            merchantInfo,
-            data,
-            additionalOfferData,
-            placementId
-          );
+          const offerAttr = extractBingAttributes(merchantInfo, data, additionalOfferData, placementId);
           const offerAttrString = offerAttributesToString(offerAttr);
           writeStream.write(offerAttrString);
           continue;
@@ -410,12 +488,7 @@ const createFeedFile = ({
           const adjustedCpc = originalEstimatedCpc * firstRow.ecpcMultiplier;
           additionalOfferData.estimatedCPC = adjustedCpc;
 
-          const offerAttr = extractBingAttributes(
-            merchantInfo,
-            data,
-            additionalOfferData,
-            placementId
-          );
+          const offerAttr = extractBingAttributes(merchantInfo, data, additionalOfferData, placementId);
           const offerAttrString = offerAttributesToString(offerAttr);
           writeStream.write(offerAttrString);
           continue;
@@ -426,12 +499,7 @@ const createFeedFile = ({
           const adjustedCpc = originalEstimatedCpc * averageMultiplier;
           additionalOfferData.estimatedCPC = adjustedCpc;
 
-          const offerAttr = extractBingAttributes(
-            merchantInfo,
-            data,
-            additionalOfferData,
-            placementId
-          );
+          const offerAttr = extractBingAttributes(merchantInfo, data, additionalOfferData, placementId);
           const offerAttrString = offerAttributesToString(offerAttr);
           writeStream.write(offerAttrString);
           continue;
@@ -441,12 +509,7 @@ const createFeedFile = ({
         const adjustedCpc = originalEstimatedCpc * 0.5;
         additionalOfferData.estimatedCPC = adjustedCpc;
 
-        const offerAttr = extractBingAttributes(
-          merchantInfo,
-          data,
-          additionalOfferData,
-          placementId
-        );
+        const offerAttr = extractBingAttributes(merchantInfo, data, additionalOfferData, placementId);
         const offerAttrString = offerAttributesToString(offerAttr);
         writeStream.write(offerAttrString);
       }
@@ -455,14 +518,10 @@ const createFeedFile = ({
     readJsonStream.on('end', () => {
       if (rejectedProducts.length > 0) {
         const data = rejectedProducts.join('\n');
-        fs.writeFile(
-          `${FEED.META.ROOT_PATH}/rejected-product-ids-${merchantInfo.id}.txt`,
-          data,
-          err => {
-            if (err) throw err;
-            console.log('Rejected product IDs saved to file.');
-          }
-        );
+        fs.writeFile(`${FEED.META.ROOT_PATH}/rejected-product-ids-${merchantInfo.id}.txt`, data, err => {
+          if (err) throw err;
+          console.log('Rejected product IDs saved to file.');
+        });
       }
       writeStream.end();
       resolve(1);

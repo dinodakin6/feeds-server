@@ -1,13 +1,14 @@
 const RegenerateHistoryModel = require('../../database/models/regenerate.model');
 const { flog } = require('../lib');
 
-const insertRegenerateData = async (id, name) => {
+const insertRegenerateData = async (id, name, requestId) => {
   try {
     const newData = new RegenerateHistoryModel({
       merchantId: id,
       merchantName: name,
       regenerateRequestDate: new Date(),
       regenerateStatus: 'pending',
+      requestId: requestId,
     });
 
     await newData.save();
@@ -17,11 +18,9 @@ const insertRegenerateData = async (id, name) => {
   }
 };
 
-const updateRegenerateData = async (id, status) => {
+const updateRegenerateData = async (id, status, requestId) => {
   try {
-    const existingData = await RegenerateHistoryModel.find({ merchantId: id })
-      .sort({ regenerateRequestDate: -1 })
-      .limit(1);
+    const existingData = await RegenerateHistoryModel.find({ merchantId: id, requestId: requestId });
 
     console.log('existingData >>>', existingData);
 

@@ -24,9 +24,9 @@ const event = require('events');
 const emitter = new event.EventEmitter();
 
 emitter.on('sendWebhook', async e => {
-  const { merchantName, merchantId } = e;
+  const { merchantName, merchantId, requestId } = e;
 
-  await updateRegenerateData(merchantId, 'done');
+  await updateRegenerateData(merchantId, 'done', requestId);
   await sendUploadHook(merchantName, merchantId);
 });
 
@@ -41,13 +41,14 @@ const processQueue = async () => {
   const nextRequest = regenerationQueue.shift();
 
   if (nextRequest) {
-    const { merchantName, merchantId } = nextRequest;
-    await regenerateFeed(merchantName, merchantId);
+    const { merchantName, merchantId, requestId } = nextRequest;
+    await regenerateFeed(merchantName, merchantId, requestId);
   }
 };
 
 const enqueueRequest = (merchantName, merchantId) => {
-  regenerationQueue.push({ merchantName, merchantId });
+  let requestId = Math.random().toString(36).substring(3, 9);
+  regenerationQueue.push({ merchantName, merchantId, requestId });
   processQueue();
 };
 
@@ -111,9 +112,9 @@ const getSpecificMerchantFeed = async mid => {
   flog('-- done getAllFeeds');
 };
 
-const uploadFeed = async (merchantName, merchantId) => {
+const uploadFeed = async (merchantName, merchantId, requestId) => {
   flog('Start of uploadFeed');
-  await updateRegenerateData(merchantId, 'uploading');
+  await updateRegenerateData(merchantId, 'uploading', requestId);
 
   const files = fs.readdirSync(FEED.META.FEED_PATH);
   const textFile = files.filter(item => item.includes(merchantName));
@@ -125,7 +126,7 @@ const uploadFeed = async (merchantName, merchantId) => {
   flog('-- done uploadFeed');
 };
 
-const regenerateFeed = async (merchantName, merchantId) => {
+const regenerateFeed = async (merchantName, merchantId, requestId) => {
   flog('regenerateFeed');
   const start = new Date().toISOString();
   const startLocale = new Date(start).toLocaleString();
@@ -134,11 +135,11 @@ const regenerateFeed = async (merchantName, merchantId) => {
     isRegenerating = true;
     const toFetch = process.argv[2] !== '--no-refetch';
     flog(`-- to fetch: ${toFetch}`);
-    await insertRegenerateData(merchantId, merchantName);
+    await insertRegenerateData(merchantId, merchantName, requestId);
 
     if (toFetch) await getSpecificMerchantFeed(merchantId);
-    await updateRegenerateData(merchantId, 'regenerating');
-    await uploadFeed(merchantName, merchantId);
+    await updateRegenerateData(merchantId, 'regenerating', requestId);
+    await uploadFeed(merchantName, merchantId, requestId);
 
     const end = new Date().toISOString();
     const endLocale = new Date(end).toLocaleString();
@@ -146,6 +147,7 @@ const regenerateFeed = async (merchantName, merchantId) => {
     emitter.emit('sendWebhook', {
       merchantName,
       merchantId,
+      requestId,
     });
 
     flog(`Start: --- ${start} --- ${startLocale}`);

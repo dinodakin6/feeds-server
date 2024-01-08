@@ -10,6 +10,7 @@ const schema = mongoose.Schema(
     },
     regenerateRequestDate: Date,
     regenerateStatus: String, // pending, regenerating, uploading, done
+    requestId: String,
   },
   { timestamps: true }
 );
