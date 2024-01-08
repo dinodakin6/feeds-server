@@ -20,18 +20,16 @@ const insertRegenerateData = async (id, name, requestId) => {
 
 const updateRegenerateData = async (id, status, requestId) => {
   try {
-    const existingData = await RegenerateHistoryModel.find({ merchantId: id, requestId: requestId });
+    const existingData = await RegenerateHistoryModel.findOne({ merchantId: id, requestId: requestId });
 
     console.log('existingData >>>', existingData);
 
     if (!existingData) throw new Error('Regenerate Data not found');
 
-    const latestData = existingData[0];
+    existingData.regenerateRequestDate = new Date();
+    existingData.regenerateStatus = status;
 
-    latestData.regenerateRequestDate = new Date();
-    latestData.regenerateStatus = status;
-
-    await latestData.save();
+    await existingData.save();
     flog(`Successfully updated data of merchantId: ${id} in DB`);
   } catch (error) {
     flog(`Failed updating data of merchantId: ${id} in DB: ${error}`);
