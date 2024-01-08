@@ -12,7 +12,7 @@ const dbName = process.env.DATABASE_NAME;
 const dbUser = process.env.DATABASE_USER;
 const dbPass = process.env.DATABASE_PASS;
 const dbUrl = process.env.DATABASE_URL;
-const caPath = 'cert/global-bundle.pem';
+const caPath = 'database/cert/global-bundle.pem';
 
 let connectionUrl = 'mongodb://localhost:27017/voluum';
 
