@@ -94,10 +94,10 @@ const placementIdsMap = {
   158466: ['924530000', '924430000'],
   28614: ['939510000', '939410000'],
   265795: ['919520000', '919420000'],
-  32251: ['903510000', '903410000', '903530000', '903430000'],
+  32251: ['903510000', '903410000'],
   199042: ['929510020', '929410000', '929530012', '929430000'],
   315724: ['902510000', '902410000', '902530000', '902430000'],
-  281380: ['944510000', '944410000', '944530000', '944430000'],
+  281380: ['944510000', '944410000'],
   301179: ['936510000', '936410000'],
   321920: ['937510000', '937410000', '937530000', '937430000'],
   24442: ['910510000', '910410000'],
@@ -165,12 +165,8 @@ const replacements = {
   ],
   30782: [
     {
-      check: '955510051',
+      check: '922511100',
       replaceWith: '922510000',
-    },
-    {
-      check: '955410015',
-      replaceWith: '955410051',
     },
   ],
   190411: [
@@ -195,8 +191,12 @@ const replacements = {
   ],
   67528: [
     {
-      check: '955510020',
+      check: '955510051',
       replaceWith: '955510015',
+    },
+    {
+      check: '955410015',
+      replaceWith: '955410051',
     },
   ],
 };
@@ -333,67 +333,48 @@ const extractBingAttributes = (merchantInfo, offerJson, additionalFeedData, plac
     } else {
       attrValue = path(offerJson);
     }
-
     acc[key] = attrValue ?? '';
     return acc;
   }, {});
 };
-
 const offerAttributesToString = offer => {
   const headers = Object.values(BingAttributes);
-
   const headerValues = headers.map(header => offer[header]);
   const joinedHeaderValues = headerValues.join('\t').concat('\n');
-
   return joinedHeaderValues;
 };
-
 const getAdditionalFeedData = merchantId => {
   return new Promise((resolve, reject) => {
     const feedFiles = fs.readdirSync(FEED.META.FEED_PATH);
-
     const merchantOfferRegex = `${merchantId}_part\\d{3}.json$`;
-
     const merchantOffers = feedFiles.filter(item => item.match(merchantOfferRegex));
-
     if (merchantOffers.length < 1) {
       resolve({});
     }
-
     const offersTracker = merchantOffers.slice();
-
     const result = [];
-
     const onDoneOffer = offerName => {
       const index = offersTracker.findIndex(item => item === offerName);
       offersTracker.splice(index, 1);
-
       if (offersTracker.length < 1) {
         const resultMap = result.reduce((acc, item) => {
           acc[item.id] = item;
           return acc;
         }, {});
-
         resolve(resultMap);
       }
     };
-
     for (const offer of merchantOffers) {
       const readStream = fs
         .createReadStream(`${FEED.META.FEED_PATH}/${offer}`)
         .pipe(JSONStream.parse('offers.offer..'));
-
       readStream.on('data', data => {
         const { id, merchantProductId, estimatedCPC, url, shipType, shipAmount, ecpcMultiplierKey } = data;
-
         let shipping = '';
-
         const hasNoShipping = !shipType || shipType?.toLowerCase() === 'unknown';
         const hasNoShipAmount = !shipAmount;
-
         if (hasNoShipping || hasNoShipAmount) shipping = '';
         else shipping = shipAmount.integral;
-
         const toAdd = {
           id,
           merchantId,
@@ -403,23 +384,19 @@ const getAdditionalFeedData = merchantId => {
           shipping,
           ecpcMultiplierKey,
         };
-
         result.push(toAdd);
       });
-
       readStream.on('error', err => {
         console.error('error with ', offer);
         console.error(err);
         reject();
       });
-
       readStream.on('end', () => {
         onDoneOffer(offer);
       });
     }
   });
 };
-
 const createFeedFile = ({ merchantInfo, sourcePath, destination, feedFile, multiplierContents }) => {
   return new Promise((resolve, reject) => {
     const csvParser = csv({ separator: '\t' });
@@ -428,27 +405,20 @@ const createFeedFile = ({ merchantInfo, sourcePath, destination, feedFile, multi
     const rejectedProducts = [];
     const headers = Object.values(BingAttributes);
     const headerString = headers.join('\t').concat('\n');
-
     writeStream.write(headerString);
     const additionalFeedData = feedFile;
-
     const merchantId = merchantInfo.id;
-
     const placementIds = placementIdsMap[merchantId] ?? [];
     const placementIdRows = multiplierContents.filter(item => placementIds.includes(item.placementId));
     const averageMultiplier =
       placementIdRows.reduce((acc, item) => acc + Number(item.ecpcMultiplier), 0) / placementIdRows.length;
-
     readJsonStream.on('data', data => {
       const additionalOfferData = additionalFeedData[data.id];
-
       if (!additionalOfferData) {
         rejectedProducts.push(data.id);
         return;
       }
-
       const originalEstimatedCpc = additionalOfferData.estimatedCPC;
-
       if (!placementIds || placementIds.length === 0) {
         const placementId = '';
         const offerAttr = extractBingAttributes(merchantInfo, data, additionalOfferData, placementId);
@@ -456,65 +426,50 @@ const createFeedFile = ({ merchantInfo, sourcePath, destination, feedFile, multi
         writeStream.write(offerAttrString);
         return;
       }
-
       const originalId = data.id;
-
       for (const index in placementIds) {
         const placementId = placementIds[index];
         const newId = originalId + index;
-
         data.id = newId;
-
         const matchPlacement = multiplierContents.filter(item => placementId === item.placementId);
-
         const matchPlacementAndKey = matchPlacement.find(
           item => item.ecpcMultiplierKey === additionalFeedData.ecpcMultiplierKey
         );
-
         if (matchPlacementAndKey) {
           const adjustedCpc = originalEstimatedCpc * matchPlacementAndKey.ecpcMultiplier;
           additionalOfferData.estimatedCPC = adjustedCpc;
-
           const offerAttr = extractBingAttributes(merchantInfo, data, additionalOfferData, placementId);
           const offerAttrString = offerAttributesToString(offerAttr);
           writeStream.write(offerAttrString);
           continue;
         }
-
         // has a match placement but no matching key
         if (matchPlacement.length) {
           const [firstRow] = matchPlacement;
-
           const adjustedCpc = originalEstimatedCpc * firstRow.ecpcMultiplier;
           additionalOfferData.estimatedCPC = adjustedCpc;
-
           const offerAttr = extractBingAttributes(merchantInfo, data, additionalOfferData, placementId);
           const offerAttrString = offerAttributesToString(offerAttr);
           writeStream.write(offerAttrString);
           continue;
         }
-
         // has no matching placement but other placement ids exist
         if (placementIdRows.length) {
           const adjustedCpc = originalEstimatedCpc * averageMultiplier;
           additionalOfferData.estimatedCPC = adjustedCpc;
-
           const offerAttr = extractBingAttributes(merchantInfo, data, additionalOfferData, placementId);
           const offerAttrString = offerAttributesToString(offerAttr);
           writeStream.write(offerAttrString);
           continue;
         }
-
         // if no placement id at all
         const adjustedCpc = originalEstimatedCpc * 0.5;
         additionalOfferData.estimatedCPC = adjustedCpc;
-
         const offerAttr = extractBingAttributes(merchantInfo, data, additionalOfferData, placementId);
         const offerAttrString = offerAttributesToString(offerAttr);
         writeStream.write(offerAttrString);
       }
     });
-
     readJsonStream.on('end', () => {
       if (rejectedProducts.length > 0) {
         const data = rejectedProducts.join('\n');
@@ -523,10 +478,8 @@ const createFeedFile = ({ merchantInfo, sourcePath, destination, feedFile, multi
           console.log('Rejected product IDs saved to file.');
         });
       }
-      writeStream.end();
       resolve(1);
     });
-
     readJsonStream.on('error', () => {
       reject();
     });
