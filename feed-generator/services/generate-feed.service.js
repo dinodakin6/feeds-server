@@ -167,7 +167,7 @@ const sendUploadHook = async (merchantName, merchantId) => {
       merchantName: merchantName,
       merchantId: merchantId,
     };
-    const res = await axios.post(`http://localhost:5000/api/feeds/f`, data);
+    const res = await axios.post(process.env.WEBHOOK_URL, data);
     flog(`--Finished sending hook to VLM: ${res.message}`);
   } catch (error) {
     console.log(error);
